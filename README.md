@@ -10,17 +10,27 @@ Mã nguồn của Counter Flame (nền tảng Unity) cố định mặt phẳng 
 
 ## Cơ chế hoạt động của ReGyro
 
-Module hook vào `android.hardware.SystemSensorManager$SensorEventQueue.dispatchSensorEvent`:
-1. **Theo dõi handle cảm biến**: Tự động ánh xạ `handle` sang `Sensor.getType()` thông qua hook `SystemSensorManager.mHandleToSensor` và `registerListenerImpl`.
-2. **Xoay bù tọa độ 45°**:
-   - Đối với Gyroscope, Accelerometer, Gravity: Xoay ma trận 2D giữa trục X và Z bù lại 45° quanh trục Y.
-   - Triệt tiêu thành phần trục Z (`v[2] = 0f`) trên con quay hồi chuyển nhằm loại bỏ hiện tượng lắc tâm/vô lăng không mong muốn.
-   - Đối với Rotation Vector (Unity `Input.gyro.attitude`): Nhân quaternion bù 45° quanh trục Y.
+Unity đọc cảm biến qua **NDK**, không đi qua `SystemSensorManager` của Java, nên hook Java thông thường không có tác dụng. ReGyro dùng **LSPosed Native Hook**:
+
+1. **Native hook (chính)**: `native_init` hook `ASensorEventQueue_getEvents` trong `libandroid.so` — đúng đường dữ liệu mà `libunity.so` kéo sự kiện cảm biến về. Ngay khi dữ liệu về, module sửa tại chỗ:
+   - Gyroscope, Gyroscope Uncalibrated, Accelerometer, Gravity, Linear Acceleration: xoay 2D giữa trục X và Z bù 45° quanh trục Y.
+   - Triệt tiêu thành phần trục Z trên con quay hồi chuyển (`data[2] = 0`) để đường tâm không bị lắc trục Roll.
+   - Rotation Vector / Game Rotation Vector (Unity `Input.gyro.attitude`): nhân quaternion bù 45° quanh trục Y.
+2. **Java hook (dự phòng)**: hook `SystemSensorManager$SensorEventQueue.dispatchSensorEvent` phòng trường hợp game dùng `SensorManager` Java.
 
 ## Cài đặt & Sử dụng
 
 1. Tải file APK từ mục **Actions** (Artifact `ReGyro-debug`) trên GitHub.
-2. Cài đặt APK vào thiết bị đã cài đặt **LSPosed** (Zygisk / Riru).
+2. Cài đặt APK vào thiết bị đã cài đặt **LSPosed** (Zygisk).
 3. Mở **LSPosed Manager** -> Kích hoạt module **ReGyro**.
 4. Kiểm tra phạm vi (Scope): Đảm bảo đã tích chọn game **Counter Flame** (`com.ScarletWork.CounterFlame`).
 5. Buộc dừng game và mở lại để trải nghiệm.
+
+## Kiểm tra module đã chạy chưa
+
+Trong **LSPosed Manager -> Log**, lọc tag `ReGyro`:
+- `ReGyro: loaded into com.ScarletWork.CounterFlame` — module đã được nạp vào game.
+- `ReGyro: native lib loaded` — thư viện native đã nạp.
+- `native_init: hook ASensorEventQueue_getEvents -> 0` — hook native đã cài thành công (mã 0 = OK).
+
+Nếu thiếu dòng nào, kiểm tra lại scope của module và khởi động lại game.
