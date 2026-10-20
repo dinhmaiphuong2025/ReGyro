@@ -2,8 +2,11 @@
 
 Xposed / LSPosed module that fixes the gyroscope aiming bug in Counter Flame (`com.ScarletWork.CounterFlame`).
 
+**[English](#english) | [中文](#中文) | [Русский](#русский) | [Tiếng Việt](#tiếng-việt)**
+
 ---
 
+<a id="english"></a>
 ## English
 
 ### Root cause
@@ -42,6 +45,7 @@ If any line is missing, check the module scope and restart the game.
 
 ---
 
+<a id="中文"></a>
 ## 中文
 
 ### 问题根源
@@ -80,6 +84,7 @@ Unity 通过 **NDK** 读取传感器，而不是通过 Java 的 `SystemSensorMan
 
 ---
 
+<a id="русский"></a>
 ## Русский
 
 ### Причина проблемы
@@ -118,6 +123,7 @@ Unity читает датчики через **NDK**, а не через Java `S
 
 ---
 
+<a id="tiếng-việt"></a>
 ## Tiếng Việt
 
 ### Nguyên nhân lỗi trong game
