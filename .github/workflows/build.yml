@@ -37,3 +37,22 @@ jobs:
         with:
           name: ReGyro-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Decode release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          mkdir -p keystore
+          echo "$KEYSTORE_B64" | base64 -d > keystore/regyro-release.jks
+
+      - name: Build Release APK
+        env:
+          REGYRO_STORE_PASSWORD: ${{ secrets.REGYRO_STORE_PASSWORD }}
+          REGYRO_KEY_PASSWORD: ${{ secrets.REGYRO_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReGyro-release
+          path: app/build/outputs/apk/release/*.apk
