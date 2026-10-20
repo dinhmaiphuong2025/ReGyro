@@ -48,7 +48,6 @@ jobs:
       - name: Build Release APK
         env:
           REGYRO_STORE_PASSWORD: ${{ secrets.REGYRO_STORE_PASSWORD }}
-          REGYRO_KEY_PASSWORD: ${{ secrets.REGYRO_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload Release APK

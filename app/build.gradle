@@ -30,7 +30,8 @@ android {
             storeFile rootProject.file('keystore/regyro-release.jks')
             storePassword System.getenv('REGYRO_STORE_PASSWORD') ?: project.findProperty('REGYRO_STORE_PASSWORD')
             keyAlias 'regyro'
-            keyPassword System.getenv('REGYRO_KEY_PASSWORD') ?: project.findProperty('REGYRO_KEY_PASSWORD')
+            // PKCS12 keystore: key password == store password
+            keyPassword System.getenv('REGYRO_STORE_PASSWORD') ?: project.findProperty('REGYRO_STORE_PASSWORD')
         }
     }
 
