@@ -4,7 +4,7 @@
 #include <dlfcn.h>
 #include <cstring>
 #include "zygisk.hpp"
-#include "dobby.h"
+#include "And64InlineHook.hpp"
 
 #define LOG_TAG "ReGyro"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -83,8 +83,9 @@ static void install_hook() {
         return;
     }
 
-    int ret = DobbyHook(sym, (void *)fake_getEvents, (void **)&orig_getEvents);
-    LOGI("install_hook: DobbyHook ASensorEventQueue_getEvents -> %d", ret);
+    A64HookFunction(sym, (void *)fake_getEvents, (void **)&orig_getEvents);
+    LOGI("install_hook: A64HookFunction ASensorEventQueue_getEvents -> %s",
+         orig_getEvents ? "success" : "failed");
 }
 
 class ReGyroModule : public zygisk::ModuleBase {
