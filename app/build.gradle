@@ -45,17 +45,13 @@ android {
     }
 }
 
-tasks.register('packageZygisk', Zip) {
-    group = 'build'
-    description = 'Package flashable Zygisk module zip for Magisk / KernelSU / APatch'
+def stagingDir = layout.buildDirectory.dir("intermediates/zygisk_module")
+
+tasks.register('prepareZygiskModule') {
     dependsOn 'assembleRelease'
+    outputs.dir(stagingDir)
 
-    archiveFileName = "ReGyro-v1.2.0-zygisk.zip"
-    destinationDirectory = layout.buildDirectory.dir("outputs/zygisk")
-
-    def stagingDir = layout.buildDirectory.dir("intermediates/zygisk_module")
-
-    doFirst {
+    doLast {
         def staging = stagingDir.get().asFile
         staging.deleteDir()
         staging.mkdirs()
@@ -82,6 +78,15 @@ tasks.register('packageZygisk', Zip) {
             }
         }
     }
+}
+
+tasks.register('packageZygisk', Zip) {
+    group = 'build'
+    description = 'Package flashable Zygisk module zip for Magisk / KernelSU / APatch'
+    dependsOn 'prepareZygiskModule'
+
+    archiveFileName = "ReGyro-v1.2.0-zygisk.zip"
+    destinationDirectory = layout.buildDirectory.dir("outputs/zygisk")
 
     from(stagingDir)
 }
