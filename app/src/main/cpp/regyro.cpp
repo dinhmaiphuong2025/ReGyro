@@ -18,6 +18,10 @@ static const float SIN_A = 0.70710678f;    /* sin(45 deg)  */
 static const float COS_HALF = 0.92387953f; /* cos(22.5 deg) */
 static const float SIN_HALF = 0.38268343f; /* sin(22.5 deg) */
 
+static inline bool isGyroType(int32_t type) {
+    return type == ASENSOR_TYPE_GYROSCOPE || type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+}
+
 static void transformEvent(ASensorEvent *e) {
     switch (e->type) {
         case ASENSOR_TYPE_GYROSCOPE:
@@ -31,11 +35,15 @@ static void transformEvent(ASensorEvent *e) {
             e->data[0] = x * COS_A + z * SIN_A;
             e->data[2] = -x * SIN_A + z * COS_A;
 
-            if (e->type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-                float dx = e->data[3];
-                float dz = e->data[5];
-                e->data[3] = dx * COS_A + dz * SIN_A;
-                e->data[5] = -dx * SIN_A + dz * COS_A;
+            if (isGyroType(e->type)) {
+                /* Kill roll axis completely so the crosshair stays level */
+                e->data[2] = 0.0f;
+                if (e->type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+                    float dx = e->data[3];
+                    float dz = e->data[5];
+                    e->data[3] = dx * COS_A + dz * SIN_A;
+                    e->data[5] = -dx * SIN_A + dz * COS_A;
+                }
             }
             break;
         }
@@ -68,6 +76,11 @@ static ssize_t fake_getEvents(ASensorEventQueue *queue, ASensorEvent *events, si
 }
 
 static void install_hook() {
+    if (orig_getEvents != nullptr) {
+        LOGI("install_hook: hook already installed");
+        return;
+    }
+
     void *handle = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
     if (handle == nullptr) {
         handle = dlopen("libsensor.so", RTLD_NOW | RTLD_LOCAL);
@@ -96,14 +109,7 @@ public:
     }
 
     void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
-        if (!args || !args->nice_name) return;
-        const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
-        if (process != nullptr) {
-            if (strcmp(process, "com.ScarletWork.CounterFlame") == 0) {
-                target = true;
-            }
-            env->ReleaseStringUTFChars(args->nice_name, process);
-        }
+        target = isTargetProcess(args);
 
         if (!target) {
             // Not target process, tell Zygisk to dlclose module library immediately
@@ -113,7 +119,7 @@ public:
 
     void postAppSpecialize(const zygisk::AppSpecializeArgs *) override {
         if (!target) return;
-        LOGI("ReGyro loaded into com.ScarletWork.CounterFlame (Zygisk)");
+        LOGI("ReGyro active in target process (Zygisk)");
         install_hook();
     }
 
@@ -121,6 +127,33 @@ private:
     zygisk::Api *api = nullptr;
     JNIEnv *env = nullptr;
     bool target = false;
+
+    bool isTargetProcess(zygisk::AppSpecializeArgs *args) {
+        if (!args) return false;
+        if (args->nice_name) {
+            const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
+            if (process != nullptr) {
+                bool match = (strstr(process, "com.ScarletWork.CounterFlame") != nullptr);
+                if (match) {
+                    LOGI("preAppSpecialize: target matched nice_name=[%s]", process);
+                }
+                env->ReleaseStringUTFChars(args->nice_name, process);
+                if (match) return true;
+            }
+        }
+        if (args->app_data_dir) {
+            const char *dir = env->GetStringUTFChars(args->app_data_dir, nullptr);
+            if (dir != nullptr) {
+                bool match = (strstr(dir, "com.ScarletWork.CounterFlame") != nullptr);
+                if (match) {
+                    LOGI("preAppSpecialize: target matched app_data_dir=[%s]", dir);
+                }
+                env->ReleaseStringUTFChars(args->app_data_dir, dir);
+                if (match) return true;
+            }
+        }
+        return false;
+    }
 };
 
 REGISTER_ZYGISK_MODULE(ReGyroModule)
