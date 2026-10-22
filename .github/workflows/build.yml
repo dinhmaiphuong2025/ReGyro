@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Zygisk Module
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build LSPosed Module APK
+    name: Build Zygisk Module ZIP
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -29,29 +29,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReGyro-debug
-          path: app/build/outputs/apk/debug/*.apk
-
-      - name: Decode release keystore
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
-        run: |
-          mkdir -p keystore
-          echo "$KEYSTORE_B64" | base64 -d > keystore/regyro-release.jks
-
-      - name: Build Release APK
-        env:
-          REGYRO_STORE_PASSWORD: ${{ secrets.REGYRO_STORE_PASSWORD }}
+      - name: Build Zygisk Module
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Upload Release APK
+      - name: Upload Zygisk Module ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ReGyro-release
-          path: app/build/outputs/apk/release/*.apk
+          name: ReGyro-Zygisk
+          path: app/build/outputs/zygisk/*.zip

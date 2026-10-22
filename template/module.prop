@@ -1,0 +1,6 @@
+id=regyro
+name=ReGyro (Zygisk)
+version=v1.2.0
+versionCode=120
+author=dinhmaiphuong2025
+description=Zygisk module fixing the 45-degree gyroscope aiming bug in Counter Flame (com.ScarletWork.CounterFlame) without Xposed.

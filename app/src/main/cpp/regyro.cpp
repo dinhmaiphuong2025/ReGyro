@@ -2,23 +2,12 @@
 #include <android/log.h>
 #include <android/sensor.h>
 #include <dlfcn.h>
-#include <cstddef>
-#include <cstdint>
-#include <sys/types.h>
+#include <cstring>
+#include "zygisk.hpp"
+#include "dobby.h"
 
 #define LOG_TAG "ReGyro"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-
-/* LSPosed Native Hook API (wiki: Native-Hook) */
-typedef int (*HookFunType)(void *func, void *replace, void **backup);
-typedef int (*UnhookFunType)(void *func);
-typedef void (*NativeOnModuleLoaded)(const char *name, void *handle);
-typedef struct {
-    uint32_t version;
-    HookFunType hook_func;
-    UnhookFunType unhook_func;
-} NativeAPIEntries;
-typedef NativeOnModuleLoaded (*NativeInit)(const NativeAPIEntries *entries);
 
 static ssize_t (*orig_getEvents)(ASensorEventQueue *queue, ASensorEvent *events,
                                  size_t count) = nullptr;
@@ -29,10 +18,6 @@ static const float SIN_A = 0.70710678f;    /* sin(45 deg)  */
 static const float COS_HALF = 0.92387953f; /* cos(22.5 deg) */
 static const float SIN_HALF = 0.38268343f; /* sin(22.5 deg) */
 
-static inline bool isGyroType(int32_t type) {
-    return type == ASENSOR_TYPE_GYROSCOPE || type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
-}
-
 static void transformEvent(ASensorEvent *e) {
     switch (e->type) {
         case ASENSOR_TYPE_GYROSCOPE:
@@ -40,21 +25,17 @@ static void transformEvent(ASensorEvent *e) {
         case ASENSOR_TYPE_ACCELEROMETER:
         case ASENSOR_TYPE_GRAVITY:
         case ASENSOR_TYPE_LINEAR_ACCELERATION: {
-            /* 2D rotation between X and Z (pitch compensation) */
+            /* 2D rotation between X and Z (pitch compensation around Y axis) */
             float x = e->data[0];
             float z = e->data[2];
             e->data[0] = x * COS_A + z * SIN_A;
             e->data[2] = -x * SIN_A + z * COS_A;
 
-            if (isGyroType(e->type)) {
-                /* Kill roll axis completely so the crosshair stays level */
-                e->data[2] = 0.0f;
-                if (e->type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-                    float dx = e->data[3];
-                    float dz = e->data[5];
-                    e->data[3] = dx * COS_A + dz * SIN_A;
-                    e->data[5] = -dx * SIN_A + dz * COS_A;
-                }
+            if (e->type == ASENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+                float dx = e->data[3];
+                float dz = e->data[5];
+                e->data[3] = dx * COS_A + dz * SIN_A;
+                e->data[5] = -dx * SIN_A + dz * COS_A;
             }
             break;
         }
@@ -86,30 +67,60 @@ static ssize_t fake_getEvents(ASensorEventQueue *queue, ASensorEvent *events, si
     return n;
 }
 
-extern "C" __attribute__((visibility("default"))) __attribute__((used))
-NativeOnModuleLoaded native_init(const NativeAPIEntries *entries) {
-    if (entries == nullptr || entries->hook_func == nullptr) {
-        LOGI("native_init: invalid NativeAPIEntries");
-        return nullptr;
-    }
-
+static void install_hook() {
     void *handle = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
     if (handle == nullptr) {
         handle = dlopen("libsensor.so", RTLD_NOW | RTLD_LOCAL);
     }
     if (handle == nullptr) {
-        LOGI("native_init: cannot dlopen libandroid.so / libsensor.so");
-        return nullptr;
+        LOGI("install_hook: cannot dlopen libandroid.so / libsensor.so");
+        return;
     }
 
     void *sym = dlsym(handle, "ASensorEventQueue_getEvents");
     if (sym == nullptr) {
-        LOGI("native_init: ASensorEventQueue_getEvents not found");
-        return nullptr;
+        LOGI("install_hook: ASensorEventQueue_getEvents not found");
+        return;
     }
 
-    int ret = entries->hook_func(sym, reinterpret_cast<void *>(fake_getEvents),
-                                 reinterpret_cast<void **>(&orig_getEvents));
-    LOGI("native_init: hook ASensorEventQueue_getEvents -> %d", ret);
-    return nullptr;
+    int ret = DobbyHook(sym, reinterpret_cast<dobby_dummy_func_t>(fake_getEvents),
+                        reinterpret_cast<dobby_dummy_func_t *>(&orig_getEvents));
+    LOGI("install_hook: DobbyHook ASensorEventQueue_getEvents -> %d", ret);
 }
+
+class ReGyroModule : public zygisk::ModuleBase {
+public:
+    void onLoad(zygisk::Api *api, JNIEnv *env) override {
+        this->api = api;
+        this->env = env;
+    }
+
+    void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
+        if (!args || !args->nice_name) return;
+        const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (process != nullptr) {
+            if (strcmp(process, "com.ScarletWork.CounterFlame") == 0) {
+                target = true;
+            }
+            env->ReleaseStringUTFChars(args->nice_name, process);
+        }
+
+        if (!target) {
+            // Not target process, tell Zygisk to dlclose module library immediately
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
+    }
+
+    void postAppSpecialize(const zygisk::AppSpecializeArgs *) override {
+        if (!target) return;
+        LOGI("ReGyro loaded into com.ScarletWork.CounterFlame (Zygisk)");
+        install_hook();
+    }
+
+private:
+    zygisk::Api *api = nullptr;
+    JNIEnv *env = nullptr;
+    bool target = false;
+};
+
+REGISTER_ZYGISK_MODULE(ReGyroModule)

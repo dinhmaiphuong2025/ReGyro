@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">ReGyro</string>
-    <string name="xposed_description">Bù góc nghiêng 45° quanh trục Y cho Gyroscope trong Counter Flame</string>
-</resources>

@@ -1,6 +1,6 @@
-# ReGyro
+# ReGyro (Zygisk Edition)
 
-Xposed / LSPosed module that fixes the gyroscope aiming bug in Counter Flame (`com.ScarletWork.CounterFlame`).
+Zygisk module that fixes the gyroscope aiming bug in Counter Flame (`com.ScarletWork.CounterFlame`) for Magisk, KernelSU, and APatch without Xposed/LSPosed.
 
 **[English](#english) | [中文](#中文) | [Русский](#русский) | [Tiếng Việt](#tiếng-việt)**
 
@@ -16,32 +16,33 @@ Counter Flame is a Unity game whose code assumes the reference plane of the devi
 - All data from `TYPE_GYROSCOPE`, `TYPE_ACCELEROMETER`, `TYPE_GRAVITY` and rotation vectors (`TYPE_ROTATION_VECTOR`, `TYPE_GAME_ROTATION_VECTOR`) is offset by 45° between the X and Z axes.
 - The game's Euler-angle calculation sags into a "V" shape when aiming horizontally.
 
-### How ReGyro works
+### How ReGyro Zygisk works
 
-Unity reads sensors through the **NDK**, not through Java's `SystemSensorManager`, so a plain Java hook has no effect. ReGyro uses the **LSPosed Native Hook**:
+Unlike the legacy LSPosed approach which loaded Java reflection hooks into the game, ReGyro Zygisk runs entirely at the native C++ level:
 
-1. **Native hook (primary)**: `native_init` hooks `ASensorEventQueue_getEvents` in `libandroid.so` — the exact path `libunity.so` uses to pull sensor events. As soon as data arrives, the module rewrites it in place:
-   - Gyroscope, Gyroscope Uncalibrated, Accelerometer, Gravity, Linear Acceleration: 2D rotation between the X and Z axes to compensate 45° around the Y axis.
-   - Zeroes the Z component on gyroscopes (`data[2] = 0`) so the crosshair is not shaken by the roll axis.
-   - Rotation Vector / Game Rotation Vector (Unity `Input.gyro.attitude`): multiplies the quaternion by a 45° compensation around the Y axis.
-2. **Java hook (fallback)**: hooks `SystemSensorManager$SensorEventQueue.dispatchSensorEvent` in case the game uses the Java `SensorManager`.
+1. **Zygote specialization gating**: When `com.ScarletWork.CounterFlame` is specialized, the module stays active; for any other process, it immediately unloads itself (`DLCLOSE_MODULE_LIBRARY`).
+2. **Native hook**: Uses Dobby to hook `ASensorEventQueue_getEvents` in `libandroid.so` (the exact path Unity NDK uses to pull sensor events). As data arrives, coordinates are transformed in place:
+   - Gyroscope, Gyroscope Uncalibrated, Accelerometer, Gravity, Linear Acceleration: 2D rotation matrix between the X and Z axes compensating 45° around the Y axis.
+   - Preserves natural sensor micro-noise on all axes (preventing anti-cheat telemetry bans from flat-zero anomaly checks).
+   - Rotation Vector / Game Rotation Vector: multiplies the quaternion by a 45° compensation around the Y axis.
+3. **Zero Xposed footprint**: Completely invisible to anti-cheat checks looking for `XposedBridge`, `de.robv`, or LSPosed memory maps.
 
 ### Installation
 
-1. Download the APK from the **Actions** tab on GitHub (artifact `ReGyro-debug`).
-2. Install it on a device with **LSPosed** (Zygisk).
-3. Open **LSPosed Manager** and enable the **ReGyro** module.
-4. Check the scope: make sure **Counter Flame** (`com.ScarletWork.CounterFlame`) is selected.
-5. Force-stop the game and relaunch it.
+1. Download the ZIP from the **Actions** tab on GitHub (artifact `ReGyro-Zygisk`).
+2. Flash the ZIP file in **KernelSU**, **APatch**, or **Magisk** Manager.
+3. Reboot your device.
+4. Launch Counter Flame.
 
-### Verifying the module is running
+### Verification
 
-In **LSPosed Manager -> Log**, filter by tag `ReGyro`:
-- `ReGyro: loaded into com.ScarletWork.CounterFlame` — the module was injected into the game.
-- `ReGyro: native lib loaded` — the native library was loaded.
-- `native_init: hook ASensorEventQueue_getEvents -> 0` — the native hook was installed (code 0 = OK).
-
-If any line is missing, check the module scope and restart the game.
+Check logcat for the `ReGyro` tag:
+```bash
+adb logcat -s ReGyro
+```
+Expected output:
+- `ReGyro loaded into com.ScarletWork.CounterFlame (Zygisk)`
+- `install_hook: DobbyHook ASensorEventQueue_getEvents -> 0`
 
 ---
 
@@ -52,35 +53,33 @@ If any line is missing, check the module scope and restart the game.
 
 Counter Flame 是一款 Unity 游戏，其代码假定设备的参考平面与地面呈 90° 竖直夹角。当你以自然的约 45° 倾角握持手机（绕屏幕水平轴，即传感器的 Y 轴）时：
 
-- `TYPE_GYROSCOPE`、`TYPE_ACCELEROMETER`、`TYPE_GRAVITY` 以及旋转矢量（`TYPE_ROTATION_VECTOR`、`TYPE_GAME_ROTATION_VECTOR`）的所有数据在 X 轴与 Z 轴之间产生 45° 偏移。
+- `TYPE_GYROSCOPE`、`TYPE_ACCELEROMETER`、`TYPE_GRAVITY` 以及旋转矢量的所有数据在 X 轴与 Z 轴之间产生 45° 偏移。
 - 游戏中的欧拉角计算在水平瞄准时呈现"V"形下垂。
 
 ### 工作原理
 
-Unity 通过 **NDK** 读取传感器，而不是通过 Java 的 `SystemSensorManager`，因此普通的 Java Hook 无效。ReGyro 使用 **LSPosed Native Hook**：
+与依赖 Java Hook 的传统 LSPosed 模块不同，ReGyro Zygisk 完全在原生 C++ 层运行：
 
-1. **Native Hook（主要）**：`native_init` 挂钩 `libandroid.so` 中的 `ASensorEventQueue_getEvents` —— 这正是 `libunity.so` 获取传感器事件的路径。数据一到，模块就地进行改写：
-   - 陀螺仪、未校准陀螺仪、加速度计、重力、线性加速度：在 X 轴与 Z 轴之间进行 2D 旋转，绕 Y 轴补偿 45°。
-   - 将陀螺仪的 Z 分量置零（`data[2] = 0`），使准星不受横滚轴影响。
-   - 旋转矢量 / 游戏旋转矢量（Unity `Input.gyro.attitude`）：将四元数乘以绕 Y 轴的 45° 补偿四元数。
-2. **Java Hook（备用）**：挂钩 `SystemSensorManager$SensorEventQueue.dispatchSensorEvent`，以防游戏使用 Java 的 `SensorManager`。
+1. **进程隔离**：仅在目标进程 `com.ScarletWork.CounterFlame` 中驻留，在其他进程中自动调用 `DLCLOSE_MODULE_LIBRARY` 卸载。
+2. **Native Hook**：利用 Dobby 挂钩 `libandroid.so` 中的 `ASensorEventQueue_getEvents`（Unity NDK 读取传感器事件的实际路径）：
+   - 陀螺仪、未校准陀螺仪、加速度计、重力、线性加速度：绕 Y 轴进行 45° 坐标变换矩阵旋转。
+   - 保留各轴的自然传感器微小噪声（避免被反作弊 Telemetry 判定为异常静态数据而封号）。
+   - 旋转矢量：将四元数乘以绕 Y 轴补偿 45° 的旋转四元数。
+3. **零 Xposed 痕迹**：彻底免除 `XposedBridge`、`de.robv` 或 LSPosed 内存映射被反作弊检测的风险。
 
-### 安装
+### 安装方法
 
-1. 从 GitHub 的 **Actions** 页面下载 APK（工件 `ReGyro-debug`）。
-2. 在已安装 **LSPosed**（Zygisk）的设备上安装。
-3. 打开 **LSPosed Manager**，启用 **ReGyro** 模块。
-4. 检查作用域：确保已勾选 **Counter Flame**（`com.ScarletWork.CounterFlame`）。
-5. 强制停止游戏并重新启动。
+1. 从 GitHub 的 **Actions** 页面下载 ZIP（工件 `ReGyro-Zygisk`）。
+2. 在 **KernelSU**、**APatch** 或 **Magisk** 管理器中刷入 ZIP 模块。
+3. 重启设备。
+4. 启动 Counter Flame 即可。
 
-### 验证模块是否生效
+### 验证生效
 
-在 **LSPosed Manager -> 日志** 中按标签 `ReGyro` 过滤：
-- `ReGyro: loaded into com.ScarletWork.CounterFlame` — 模块已注入游戏。
-- `ReGyro: native lib loaded` — 原生库已加载。
-- `native_init: hook ASensorEventQueue_getEvents -> 0` — 原生 Hook 已安装（代码 0 = 成功）。
-
-如果缺少任何一行，请检查模块作用域并重启游戏。
+通过 logcat 查看日志：
+```bash
+adb logcat -s ReGyro
+```
 
 ---
 
@@ -89,37 +88,25 @@ Unity 通过 **NDK** 读取传感器，而不是通过 Java 的 `SystemSensorMan
 
 ### Причина проблемы
 
-Counter Flame — игра на Unity, код которой предполагает, что опорная плоскость устройства находится под углом 90° к земле. Когда вы держите телефон под естественным наклоном ~45° вокруг горизонтальной оси экрана (оси Y датчика):
+Counter Flame — игра на Unity, код которой предполагает, что опорная плоскость устройства находится под углом 90° к земле. При естественном наклоне ~45° данные осей X и Z смещаются, вызывая V-образное провисание прицела.
 
-- Все данные с `TYPE_GYROSCOPE`, `TYPE_ACCELEROMETER`, `TYPE_GRAVITY` и векторов вращения (`TYPE_ROTATION_VECTOR`, `TYPE_GAME_ROTATION_VECTOR`) смещаются на 45° между осями X и Z.
-- Расчёт углов Эйлера в игре «провисает» в форме буквы «V» при горизонтальном прицеливании.
+### Как работает ReGyro Zygisk
 
-### Как работает ReGyro
+Модуль работает исключительно на уровне нативного C++ без использования Xposed/Java:
 
-Unity читает датчики через **NDK**, а не через Java `SystemSensorManager`, поэтому обычный Java-хук не действует. ReGyro использует **LSPosed Native Hook**:
-
-1. **Native-хук (основной)**: `native_init` перехватывает `ASensorEventQueue_getEvents` в `libandroid.so` — тот самый путь, по которому `libunity.so` получает события датчиков. Как только данные поступают, модуль переписывает их на месте:
-   - Гироскоп, некалиброванный гироскоп, акселерометр, гравитация, линейное ускорение: 2D-поворот между осями X и Z для компенсации 45° вокруг оси Y.
-   - Обнуляет компонент Z у гироскопа (`data[2] = 0`), чтобы прицел не трясло по оси крена.
-   - Вектор вращения / игровой вектор вращения (Unity `Input.gyro.attitude`): умножает кватернион на компенсационный кватернион 45° вокруг оси Y.
-2. **Java-хук (резервный)**: перехватывает `SystemSensorManager$SensorEventQueue.dispatchSensorEvent` на случай, если игра использует Java `SensorManager`.
+1. **Изоляция процессов**: Активируется только в `com.ScarletWork.CounterFlame`, для всех остальных процессов немедленно выгружается.
+2. **Native-хук**: Использует Dobby для перехвата `ASensorEventQueue_getEvents` в `libandroid.so`.
+   - Вращение 2D-матрицы между X и Z на 45° вокруг оси Y.
+   - Сохранение естественного микрошума датчиков (защита от банов античитом за аномально плоские данные).
+   - Поворот кватернионов векторов вращения на 45° вокруг оси Y.
+3. **Отсутствие следов Xposed**: Полная невидимость для проверок памяти на `XposedBridge` и `liblspd.so`.
 
 ### Установка
 
-1. Скачайте APK со вкладки **Actions** на GitHub (артефакт `ReGyro-debug`).
-2. Установите его на устройство с **LSPosed** (Zygisk).
-3. Откройте **LSPosed Manager** и включите модуль **ReGyro**.
-4. Проверьте область действия: убедитесь, что выбрана **Counter Flame** (`com.ScarletWork.CounterFlame`).
-5. Принудительно остановите игру и запустите её заново.
-
-### Проверка работы модуля
-
-В **LSPosed Manager -> Журнал** отфильтруйте по тегу `ReGyro`:
-- `ReGyro: loaded into com.ScarletWork.CounterFlame` — модуль внедрён в игру.
-- `ReGyro: native lib loaded` — нативная библиотека загружена.
-- `native_init: hook ASensorEventQueue_getEvents -> 0` — нативный хук установлен (код 0 = ОК).
-
-Если какой-то строки нет, проверьте область действия модуля и перезапустите игру.
+1. Скачайте ZIP из вкладки **Actions** на GitHub (артефакт `ReGyro-Zygisk`).
+2. Прошейте ZIP через **KernelSU**, **APatch** или **Magisk**.
+3. Перезагрузите устройство.
+4. Запустите Counter Flame.
 
 ---
 
@@ -128,34 +115,32 @@ Unity читает датчики через **NDK**, а не через Java `S
 
 ### Nguyên nhân lỗi trong game
 
-Mã nguồn của Counter Flame (nền tảng Unity) cố định mặt phẳng chuẩn ở góc dựng đứng 90° so với mặt đất. Khi người chơi hạ máy về tư thế cầm tự nhiên ~45° quanh trục ngang màn hình (trục Y của cảm biến):
+Mã nguồn của Counter Flame (nền tảng Unity) cố định mặt phẳng chuẩn ở góc dựng đứng 90° so với mặt đất. Khi người chơi cầm máy ở góc nghiêng tự nhiên ~45°, các trục cảm biến bị lệch 45° giữa X và Z khiến tâm ngắm bị võng hình chữ V khi lia ngang.
 
-- Toàn bộ dữ liệu từ `TYPE_GYROSCOPE`, `TYPE_ACCELEROMETER`, `TYPE_GRAVITY` và Rotation Vector (`TYPE_ROTATION_VECTOR`, `TYPE_GAME_ROTATION_VECTOR`) bị lệch 45° giữa trục X và trục Z.
-- Hàm tính góc Euler trong game bị võng thành hình chữ V khi lia tâm ngang.
+### Cơ chế hoạt động của ReGyro Zygisk
 
-### Cơ chế hoạt động của ReGyro
+Khác với bản LSPosed cũ phải kéo theo framework Java, bản Zygisk chạy 100% ở tầng C++ Native:
 
-Unity đọc cảm biến qua **NDK**, không đi qua `SystemSensorManager` của Java, nên hook Java thông thường không có tác dụng. ReGyro dùng **LSPosed Native Hook**:
-
-1. **Native hook (chính)**: `native_init` hook `ASensorEventQueue_getEvents` trong `libandroid.so` — đúng đường dữ liệu mà `libunity.so` kéo sự kiện cảm biến về. Ngay khi dữ liệu về, module sửa tại chỗ:
-   - Gyroscope, Gyroscope Uncalibrated, Accelerometer, Gravity, Linear Acceleration: xoay 2D giữa trục X và Z bù 45° quanh trục Y.
-   - Triệt tiêu thành phần trục Z trên con quay hồi chuyển (`data[2] = 0`) để đường tâm không bị lắc trục Roll.
-   - Rotation Vector / Game Rotation Vector (Unity `Input.gyro.attitude`): nhân quaternion bù 45° quanh trục Y.
-2. **Java hook (dự phòng)**: hook `SystemSensorManager$SensorEventQueue.dispatchSensorEvent` phòng trường hợp game dùng `SensorManager` Java.
+1. **Lọc tiến trình tại Zygote**: Module chỉ kích hoạt khi tiến trình là `com.ScarletWork.CounterFlame`, với mọi app khác module tự giải phóng bộ nhớ (`DLCLOSE_MODULE_LIBRARY`).
+2. **Native Hook sạch sẽ**: Dùng Dobby hook trực tiếp `ASensorEventQueue_getEvents` trong `libandroid.so` (đúng đường Unity NDK đọc dữ liệu):
+   - Xoay ma trận 2D giữa trục X và Z bù 45° quanh trục Y.
+   - **Giữ nguyên dao động tự nhiên (noise) của trục Z**: Không còn ép `0.0f` để tránh bị server game quét anomaly telemetry gắn cờ bot/cheat.
+   - Bù 45° cho Rotation Vector (Quaternion).
+3. **Không để lại dấu vết Xposed**: Loại bỏ hoàn toàn `XposedBridge`, `de.robv`, `liblspd.so` khỏi bộ nhớ `/proc/self/maps`.
 
 ### Cài đặt & Sử dụng
 
-1. Tải file APK từ mục **Actions** (Artifact `ReGyro-debug`) trên GitHub.
-2. Cài đặt APK vào thiết bị đã cài đặt **LSPosed** (Zygisk).
-3. Mở **LSPosed Manager** -> Kích hoạt module **ReGyro**.
-4. Kiểm tra phạm vi (Scope): Đảm bảo đã tích chọn game **Counter Flame** (`com.ScarletWork.CounterFlame`).
-5. Buộc dừng game và mở lại để trải nghiệm.
+1. Tải file ZIP từ mục **Actions** (Artifact `ReGyro-Zygisk`) trên GitHub.
+2. Mở trình quản lý **KernelSU**, **APatch** hoặc **Magisk** -> Chọn cài đặt module từ tệp ZIP vừa tải.
+3. Khởi động lại thiết bị.
+4. Mở Counter Flame và trải nghiệm.
 
-### Kiểm tra module đã chạy chưa
+### Kiểm tra module hoạt động
 
-Trong **LSPosed Manager -> Log**, lọc tag `ReGyro`:
-- `ReGyro: loaded into com.ScarletWork.CounterFlame` — module đã được nạp vào game.
-- `ReGyro: native lib loaded` — thư viện native đã nạp.
-- `native_init: hook ASensorEventQueue_getEvents -> 0` — hook native đã cài thành công (mã 0 = OK).
-
-Nếu thiếu dòng nào, kiểm tra lại scope của module và khởi động lại game.
+Xem logcat qua lệnh:
+```bash
+adb logcat -s ReGyro
+```
+Log hợp lệ:
+- `ReGyro loaded into com.ScarletWork.CounterFlame (Zygisk)`
+- `install_hook: DobbyHook ASensorEventQueue_getEvents -> 0`
