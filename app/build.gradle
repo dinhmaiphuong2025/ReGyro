@@ -53,12 +53,20 @@ tasks.register('packageZygisk', Zip) {
     archiveFileName = "ReGyro-v1.2.0-zygisk.zip"
     destinationDirectory = layout.buildDirectory.dir("outputs/zygisk")
 
-    from("${rootDir}/template")
+    def stagingDir = layout.buildDirectory.dir("intermediates/zygisk_module")
 
     doFirst {
-        def tmpZygisk = file("${layout.buildDirectory.get().asFile}/tmp/zygisk")
-        tmpZygisk.deleteDir()
-        tmpZygisk.mkdirs()
+        def staging = stagingDir.get().asFile
+        staging.deleteDir()
+        staging.mkdirs()
+
+        copy {
+            from "${rootDir}/template"
+            into staging
+        }
+
+        def zygiskDir = new File(staging, "zygisk")
+        zygiskDir.mkdirs()
 
         def bDir = layout.buildDirectory.get().asFile
         ['arm64-v8a', 'armeabi-v7a'].each { abi ->
@@ -66,7 +74,7 @@ tasks.register('packageZygisk', Zip) {
             def stripped = candidates.find { it.path.contains("stripped") }
             def soFile = stripped ?: candidates.find { it.exists() }
             if (soFile && soFile.exists()) {
-                def target = new File(tmpZygisk, "${abi}.so")
+                def target = new File(zygiskDir, "${abi}.so")
                 target.bytes = soFile.bytes
                 println "Zygisk: packed ${abi}.so from ${soFile.path} (${soFile.length()} bytes)"
             } else {
@@ -75,9 +83,7 @@ tasks.register('packageZygisk', Zip) {
         }
     }
 
-    into('zygisk') {
-        from("${layout.buildDirectory.get().asFile}/tmp/zygisk")
-    }
+    from(stagingDir)
 }
 
 afterEvaluate {

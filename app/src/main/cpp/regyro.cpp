@@ -83,8 +83,7 @@ static void install_hook() {
         return;
     }
 
-    int ret = DobbyHook(sym, reinterpret_cast<dobby_dummy_func_t>(fake_getEvents),
-                        reinterpret_cast<dobby_dummy_func_t *>(&orig_getEvents));
+    int ret = DobbyHook(sym, (void *)fake_getEvents, (void **)&orig_getEvents);
     LOGI("install_hook: DobbyHook ASensorEventQueue_getEvents -> %d", ret);
 }
 
